@@ -21,6 +21,7 @@
     "eslint-plugin-svelte3": "^4.0.0",
     "postcss": "^8.4.16",
     "pug": "^3.0.2",
+    "sass": "^1.54.5",
     "svelte": "^3.44.0",
     "svelte-check": "^2.7.1",
     "svelte-preprocess": "^4.10.6",

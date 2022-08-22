@@ -10,4 +10,32 @@ declare namespace App {
 	// interface Stuff {}
 }
 
+type ChoiceCard = {
+  headerContent: string;
+  bodyContent: string;
+  rank?: number;
+};
+
+type DragFinal = {
+  start: {
+    x: number;
+    y: number;
+  };
+  end: {
+    x: number;
+    y: number;
+  };
+};
+
+type DragMove = {
+  start: {
+    x: number;
+    y: number;
+  };
+  current: {
+    x: number;
+    y: number;
+  };
+};
+
 declare module 'feather-icons';

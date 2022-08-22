@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fade } from "svelte/transition";
   import feather from "feather-icons";
   export const directions = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
 
