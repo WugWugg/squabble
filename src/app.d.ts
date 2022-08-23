@@ -38,4 +38,9 @@ type DragMove = {
   };
 };
 
+type DragStart = {
+  x: number;
+  y: number;
+};
+
 declare module 'feather-icons';

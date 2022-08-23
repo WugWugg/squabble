@@ -4,10 +4,7 @@
   import { backOut, expoOut } from "svelte/easing";
   import { crossfade, fade } from "svelte/transition";
   import { flip } from "svelte/animate";
-
-  type input = {
-    choices: ChoiceCard[];
-  };
+  import { spring } from "svelte/motion";
 
   export let choices: Array<ChoiceCard> = [
     { headerContent: "Alpha", bodyContent: "write some docs" },
@@ -39,6 +36,11 @@
       };
     },
   });
+  const pointerOffset = spring(0, {
+    stiffness: 0.1,
+    damping: 0.8,
+    precision: 1,
+  });
 
   let rankingDiv: HTMLElement;
   let rankingPointer: HTMLElement;
@@ -47,6 +49,7 @@
     .filter((x) => x.rank)
     .sort((a, b) => a.rank! - b.rank!);
   let insertionPointerIndex: number | undefined;
+  let isPointerShown = false;
 
   function select(choice: ChoiceCard) {
     unselected = [...unselected.filter((x) => x !== choice)];
@@ -59,71 +62,69 @@
   }
 
   function rankFromDrag(
-    start: {x: number, y: number},
-    final: {x: number, y: number}
+    start: { x: number; y: number },
+    final: { x: number; y: number }
   ): number {
     //- Get horizontal mid-line of all children of rankingDiv
     const midlines = [];
     for (const el of rankingDiv.children) {
-      const midline = el.getClientRects()[0].top + el.clientHeight / 2;
+      if (!el.attributes.getNamedItem("rankable")) continue;
+      const { y, height } = el.getBoundingClientRect();
+      const midline = y + height / 2;
       midlines.push(midline);
     }
+
     let rank;
-    if (final.y < midlines[0]) {
+    if (final.y <= midlines[0]) {
       // Pointer ended above all items; make first in the list
       rank = 1;
+      console.log("FIRST");
     } else if (final.y > midlines[midlines.length - 1]) {
-      // Point ended below all items; make last in the list
+      // Pointer ended below all items; make last in the list
       rank = ranked.length;
+      console.log("LAST");
     } else {
       // Pointer ended somewhere between two elements in the list
-      // const startMidline = midlines[choice.selected!.rank - 1];
       for (let i = 0; i < midlines.length - 1; i++) {
-        // Rank is natural counting (i.e. starts at one), but remember we already handled rank 1 above. Thus, start at two.
-        if (
-          final.y >= midlines[i] &&
-          final.y <= midlines[i + 1]
-        ) {
+        if (start.y >= midlines[i] && start.y <= midlines[i + 1]) {
+        }
+        // Think of 'i' as represting space between two items in this list
+        if (final.y >= midlines[i] && final.y <= midlines[i + 1]) {
           if (final.y < start.y) {
-            // This item is being promoted. Offset by two:
-            //  * +1 comes from the ranking being natural count (starts at 1 instead of 0)
-            //  * +1 because between the first item and second is actual rank two (only when promoting)
-            //
-            // This makes it so that you have to drag this item above a rank's midline to set that rank (think: it 'push' the other items down)
+            // This item is being promoted. Add one because the space between
+            // the first item and second item is rank 2 when promoting. When i=0,
+            // ranking starts from the space above the first item.
             rank = i + 2;
-          } else if (final.y >= start.y) {
-            // This item is being demoted. Offset by two:
-            //  * +1 comes from the ranking being natural count (starts at 1 instead of 0)
-            //
-            // This makes it so that you have to drag this item below a rank's midline to set that rank (think: it 'bump' the other items up)
+          } else if (final.y > start.y) {
+            // This item is being demoted. The space between the first item and
+            // second item is rank 1 when demoting. When i=0, ranking starts from
+            // the space between the first item and second item.
             rank = i + 1;
           } else {
-            throw new Error("Unreachable code");
+            console.error(` Start Y: ${start.y}, Final Y: ${final.y}`);
+            throw new Error(
+              "Do not call `rankFromDrag` with equal Y values! Filter non-moves first!"
+            );
           }
           break;
         }
       }
     }
-    if (rank === undefined) throw new Error(`Expected: number. Got: ${rank}. Where was the mouse/pointer?`);
+    console.log("Rank: ", rank, "\n");
+    if (rank === undefined)
+      throw new Error(
+        `Expected: number. Got: ${rank}. Where was the mouse/pointer?`
+      );
     return rank;
   }
 
-  async function handleDragFinal(event: CustomEvent<DragFinal>, choice: ChoiceCard) {
-    const startingRankIndex = rankFromDrag(event.detail.start, event.detail.end) - 1;
-    const finalRankIndex = ranked.findIndex((x) => x === choice);
-    ranked = [
-      ...ranked.slice(0, startingRankIndex),
-      ...ranked.slice(startingRankIndex + 1),
-    ];
-    ranked = [
-      ...ranked.slice(0, finalRankIndex),
-      choice,
-      ...ranked.slice(finalRankIndex),
-    ];
-    cleanupPartingInsertion();
+  function handleDragStart(event: CustomEvent<DragStart>) {
+    applyPointerMove(event.detail.y, true);
+    isPointerShown = true;
   }
 
-  function handleDragMove(event: CustomEvent<DragMove>, choice: ChoiceCard) {
+  function handleDragMove(event: CustomEvent<DragMove>) {
+    if (event.detail.start.y === event.detail.current.y) return; // This didn't move
     const rank = rankFromDrag(event.detail.start, event.detail.current) - 1;
     if (insertionPointerIndex !== undefined && insertionPointerIndex !== rank) {
       // The point has moved to another rank, clean up the expansions but not the pointer
@@ -133,29 +134,56 @@
     applyPointerMove(event.detail.current.y);
   }
 
+  function handleDragFinal(event: CustomEvent<DragFinal>, choice: ChoiceCard) {
+    const startingRankIndex = ranked.findIndex((x) => x === choice);
+    const startingRank = startingRankIndex + 1;
+    if (event.detail.start.y === event.detail.end.y) return; // This didn't move
+    const finalRank = rankFromDrag(event.detail.start, event.detail.end);
+    const finalRankIndex = finalRank - 1;
+    console.log(`startingRankIndex: ${startingRankIndex}, finalRank: ${finalRank}, finalRankIndex: ${finalRankIndex}`)
+    if (finalRank !== startingRank) {
+      ranked = [
+        ...ranked.slice(0, startingRankIndex),
+        ...ranked.slice(startingRankIndex + 1),
+      ];
+      ranked = [
+        ...ranked.slice(0, finalRankIndex),
+        choice,
+        ...ranked.slice(finalRankIndex),
+      ];
+    }
+    console.log(
+      JSON.stringify(
+        ranked.map((x, i) => {
+          return { title: x.headerContent, index: i };
+        })
+      )
+    );
+    cleanupUi();
+  }
+
   function applyPartingInsertion(rankIndex: number) {
     // Make springy side-caret visible
-
     // Apply class to elements above and below this rankIndex
   }
 
-  function applyPointerMove(y: number) {
-    const offset = rankingDiv.getBoundingClientRect().y;
-    rankingPointer.style.top = `${y - offset}px`;
+  function applyPointerMove(y: number, hard?: boolean) {
+    const offset =
+      rankingDiv.getBoundingClientRect().y +
+      rankingDiv.getBoundingClientRect().height / 2;
+    pointerOffset.set(y - offset, { hard });
   }
 
-  function cleanupPartingInsertion() {
+  function cleanupUi() {
     clearExpansionClasses();
     clearInsertionPointer();
     insertionPointerIndex = undefined;
   }
 
-  function clearExpansionClasses() {
-
-  }
+  function clearExpansionClasses() {}
 
   function clearInsertionPointer() {
-
+    isPointerShown = false;
   }
 </script>
 
@@ -182,10 +210,19 @@
       .card-body.w-full
         h3.card-title.mx-auto Ranking
         #ranking-div.flex.flex-col.place-content-center.place-items-center.gap-3.ml-3("bind:this"!="{rankingDiv}")
-          #ranking-pointer("bind:this"!="{rankingPointer}")
-            Icon("name"="chevron-right")
+          //- Any element with the 'rankable' attribute will be counted
+          +if('isPointerShown')
+            #ranking-pointer(
+              "transition:fade"!="{ { duration: 300 } }"
+              "style:transform"!="{`translateY(${$pointerOffset}px)`}"
+              "bind:this"!="{rankingPointer}"
+            )
+              //- Thus it will ignore this pointer
+              Icon("name"="chevron-right")
           +each("ranked as choice, index (choice.headerContent)")
+            //- But rank each of these
             .w-full(
+              rankable
               "in:receive"="{ { key: choice.headerContent, easing: backOut } }"
               "out:send"="{ { key: choice.headerContent, easing: expoOut } }"
               "animate:flip"="{ { duration: 300 } }"
@@ -194,8 +231,10 @@
                 "headerContent"!="{`${choice.headerContent}`}"
                 "bodyContent"!="{ choice.bodyContent }"
                 "on:close"!="{ () => unselect(choice) }"
-                "on:dragMove"!="{ (e) => handleDragMove(e, choice) }"
+                "on:dragStart"!="{handleDragStart}"
+                "on:dragMove"!="{handleDragMove}"
                 "on:dragFinal"!="{ (e) => handleDragFinal(e, choice) }"
+                "on:dragCancel"!="{ () => cleanupUi() }"
               )
 </template>
 

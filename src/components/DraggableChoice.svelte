@@ -46,17 +46,25 @@
   function handleDragStart(event: PointerEvent) {
     isDrag = true;
     dragStart = { x: event.clientX, y: event.clientY };
-    self.setPointerCapture(event.pointerId);
     mousePos = getPostion(event);
-    document.addEventListener("pointerup", handleDragEnd, {
-      once: true,
-      passive: true,
-    });
-    document.addEventListener("pointercancel", handleDragEnd, {
-      once: true,
-      passive: true,
-    });
-    document.addEventListener("pointermove", handleDragMove, { passive: true });
+    self.setPointerCapture(event.pointerId);
+    dispatch("dragStart", { x: event.x, y: event.y })
+  }
+
+  function handleDragMove(event: MouseEvent) {
+    if (!isDrag) return
+    mousePos = getPostion(event);
+    const dragEvent: DragMove = {
+      start: {
+        x: dragStart.x,
+        y: dragStart.y,
+      },
+      current: {
+        x: event.clientX,
+        y: event.clientY,
+      },
+    };
+    dispatch("dragMove", dragEvent)
   }
 
   async function handleDragEnd(event: PointerEvent) {
@@ -73,25 +81,12 @@
     };
     dispatch("dragFinal", dragEvent);
     self.releasePointerCapture(event.pointerId);
-    document.removeEventListener("pointerup", handleDragEnd);
-    document.removeEventListener("pointercancel", handleDragEnd);
-    document.removeEventListener("pointermove", handleDragMove);
     dragStart = { x: 0, y: 0 };
   }
 
-  function handleDragMove(event: MouseEvent) {
-    mousePos = getPostion(event);
-    const dragEvent: DragMove = {
-      start: {
-        x: dragStart.x,
-        y: dragStart.y,
-      },
-      current: {
-        x: event.clientX,
-        y: event.clientY,
-      },
-    };
-    dispatch("dragMove", dragEvent)
+  function handleDragCancel(_event: Event) {
+    dispatch("dragCancel");
+    dragStart = { x: 0, y: 0 };
   }
 
   function getPostion(event: MouseEvent) {
@@ -112,11 +107,15 @@
       "class"!="{ isDrag ? 'drop-shadow-lg -translate-x-4 -translate-y-1' : 'drop-shadow' }"
       "bind:this={self}"
       "on:pointerdown"!="{ handleDragStart }"
+      "on:pointerup"!="{ handleDragEnd }"
+      "on:pointermove"!="{ handleDragMove }"
+      "on:click"!="{ handleDragCancel }"
     )
       .card-body.flex-row.items-center
-        .place-self-center.text-stone-700.ml-1.text-lg
+        //- This must have 'pointer-events' set to 'none'! Otherwise dragging on the menu icon causes problems on mobile (Firefox)
+        .place-self-center.text-stone-700.ml-1.text-lg.pointer-events-none
           +key('iconName')
-            div("in:fade"!="{ { duration: 100, easing: sineInOut } }")
+            #drag-icon("in:fade"!="{ { duration: 100, easing: sineInOut } }")
               Icon(name="{ iconName }")
         .divider.divider-horizontal.ml-1(class="before:bg-stone-300 after:bg-stone-300")
         //- Stop propagation to let user select text
@@ -131,3 +130,18 @@
         )
           Icon(name="x")
 </template>
+
+<style lang="scss">
+  #drag-icon {
+    position: relative;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 0 0;
+      height: 100%;
+      width: 100%;
+      z-index: 1;
+    }
+  }
+</style>
