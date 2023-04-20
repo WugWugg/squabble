@@ -61,6 +61,8 @@
     ranked = [...ranked.filter((x) => x !== choice)];
   }
 
+  // TODO: This needs to detect if the user hasn't moved to the other side of
+  // the nearest item
   function rankFromDrag(
     start: { x: number; y: number },
     final: { x: number; y: number }
@@ -78,11 +80,9 @@
     if (final.y <= midlines[0]) {
       // Pointer ended above all items; make first in the list
       rank = 1;
-      console.log("FIRST");
     } else if (final.y > midlines[midlines.length - 1]) {
       // Pointer ended below all items; make last in the list
       rank = ranked.length;
-      console.log("LAST");
     } else {
       // Pointer ended somewhere between two elements in the list
       for (let i = 0; i < midlines.length - 1; i++) {
@@ -110,7 +110,6 @@
         }
       }
     }
-    console.log("Rank: ", rank, "\n");
     if (rank === undefined)
       throw new Error(
         `Expected: number. Got: ${rank}. Where was the mouse/pointer?`
@@ -140,7 +139,6 @@
     if (event.detail.start.y === event.detail.end.y) return; // This didn't move
     const finalRank = rankFromDrag(event.detail.start, event.detail.end);
     const finalRankIndex = finalRank - 1;
-    console.log(`startingRankIndex: ${startingRankIndex}, finalRank: ${finalRank}, finalRankIndex: ${finalRankIndex}`)
     if (finalRank !== startingRank) {
       ranked = [
         ...ranked.slice(0, startingRankIndex),
@@ -152,13 +150,6 @@
         ...ranked.slice(finalRankIndex),
       ];
     }
-    console.log(
-      JSON.stringify(
-        ranked.map((x, i) => {
-          return { title: x.headerContent, index: i };
-        })
-      )
-    );
     cleanupUi();
   }
 
